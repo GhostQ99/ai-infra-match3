@@ -48,7 +48,7 @@ button,select{font:inherit}button{cursor:pointer}.app{max-width:1200px;margin:au
         <div class="stat"><span>剩余提示</span><strong id="hintsLeft">3</strong></div>
         <div class="stat"><span>剩余重排</span><strong id="reshufflesLeft">3</strong></div>
       </div>
-      <div id="scoreBreakdown" class="small-muted" style="margin:-8px 0 14px">本次得分：0（基础分 0 + 连锁奖励 0）</div>
+      <div id="scoreBreakdown" class="small-muted" style="margin:-8px 0 14px">计分修正版 v2026.10.24 · 累计总分：0｜本次 +0</div>
       <div class="board-head">
         <h2>术语棋盘</h2>
         <div class="actions">
@@ -227,13 +227,20 @@ function hasLegalMove(board){
 }
 
 function matches(board){const s=new Set(),n=state.size;for(let r=0;r<n;r++)for(let c=0;c<n;c++){const i=r*n+c,k=board[i];if(!k)continue;if(c+2<n&&board[i+1]===k&&board[i+2]===k){s.add(i);s.add(i+1);s.add(i+2)}if(r+2<n&&board[i+n]===k&&board[i+2*n]===k){s.add(i);s.add(i+n);s.add(i+2*n)}}return [...s]}
+function addToScore(points){
+  const amount=Math.max(0,Math.trunc(Number(points)||0));
+  state.score=Math.max(0,Math.trunc(Number(state.score)||0))+amount;
+  const scoreEl=$("score");
+  if(scoreEl)scoreEl.textContent=String(state.score);
+  return amount;
+}
 function setMessage(text){$("message").textContent=text}
 function showTerm(key){const t=lookup(key);if(!t)return;state.current=key;state.learned.add(key);$("termTitle").textContent=t.name;$("termCategory").textContent=t.category+" · "+t.kind;$("termDefinition").textContent=t.desc;$("termTags").innerHTML=t.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join("");$("learnedCount").textContent=state.learned.size;$("progressFill").style.width=Math.min(100,state.learned.size/Math.max(1,currentPool().length)*100)+"%";$("progressText").textContent=`已浏览 ${state.learned.size} / ${currentPool().length} 个不同术语`;renderGlossary()}
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function renderBoard(){const board=$("board");board.style.gridTemplateColumns=`repeat(${state.size},minmax(0,1fr))`;board.innerHTML="";state.board.forEach((key,i)=>{const t=key?lookup(key):null;const el=document.createElement("button");el.className="tile"+(state.selected===i?" selected":"")+(state.hint?.includes(i)?" selected":"");el.type="button";el.setAttribute("role","gridcell");el.setAttribute("aria-label",t?t.name:"消除中");el.title=t?t.name+"：点击查看释义":"消除中";el.style.background=t?palette[Math.abs(hash(key))%palette.length]:"#30354a";el.textContent=t?t.name:"";el.disabled=!t; if(t)el.addEventListener("click",()=>tileClick(i));board.appendChild(el)})}
 function hash(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h}
 function renderGlossary(){const q=$("search").value.trim().toLowerCase(),terms=currentPool().filter(t=>(t.name+" "+t.kind+" "+t.desc+" "+t.tags.join(" ")).toLowerCase().includes(q));$("glossaryCount").textContent=terms.length+" 个词条";$("glossaryList").innerHTML=terms.map(t=>`<button class="word-row ${t.key===state.current?"current":""}" data-key="${escapeHtml(t.key)}"><b>${escapeHtml(t.name)}</b><span>${escapeHtml(t.kind)}</span></button>`).join("");$("glossaryList").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>showTerm(b.dataset.key)))}
-function renderControls(){$("categoryControls button").forEach(b=>b.classList.toggle("active",b.dataset.category===state.category));$("difficultyControls button").forEach(b=>b.classList.toggle("active",Number(b.dataset.size)===state.size));$("score").textContent=state.score;$("cleared").textContent=state.cleared;$("learnedCount").textContent=state.learned.size;$("hintsLeft").textContent=state.hintsLeft;$("reshufflesLeft").textContent=state.reshufflesLeft;$("scoreBreakdown").textContent="本次得分：+"+state.lastMoveScore+"（基础分 "+state.lastBaseScore+" + 多组奖励 "+state.lastMultiScore+" + 连锁奖励 "+state.lastComboScore+"）";$("hintBtn").disabled=state.busy||state.hintsLeft<=0;$("reshuffleBtn").disabled=state.busy||state.reshufflesLeft<=0}
+function renderControls(){$("categoryControls button").forEach(b=>b.classList.toggle("active",b.dataset.category===state.category));$("difficultyControls button").forEach(b=>b.classList.toggle("active",Number(b.dataset.size)===state.size));$("score").textContent=state.score;$("cleared").textContent=state.cleared;$("learnedCount").textContent=state.learned.size;$("hintsLeft").textContent=state.hintsLeft;$("reshufflesLeft").textContent=state.reshufflesLeft;$("scoreBreakdown").textContent="累计总分："+state.score+"｜本次 +"+state.lastMoveScore+"（基础 "+state.lastBaseScore+" + 多组奖励 "+state.lastMultiScore+" + 连锁奖励 "+state.lastComboScore+"）";$("hintBtn").disabled=state.busy||state.hintsLeft<=0;$("reshuffleBtn").disabled=state.busy||state.reshufflesLeft<=0}
 function $$(s){return document.querySelectorAll(s)}
 function startGame(message="新的一局开始了！",changeWords=false){state.busy=false;state.resolving=false;if(changeWords||!state.roundTerms.length)chooseRoundTerms();state.board=makeBoard();state.selected=null;state.score=0;state.cleared=0;state.hint=null;state.busy=false;state.hintsLeft=3;state.reshufflesLeft=3;state.chainDepth=0;state.chainBonus=0;state.chainGroups=0;state.autoReshuffles=0;state.lastMoveScore=0;state.lastBaseScore=0;state.lastMultiScore=0;state.lastComboScore=0;renderBoard();renderControls();setMessage(message+" 本局词种："+currentPool().length+" 个；每局 3 次提示、3 次手动重排。")}
 function tileClick(i){if(state.busy)return;state.hint=null;const key=state.board[i];showTerm(key);if(state.selected===null){state.selected=i;renderBoard();setMessage("已选中「"+lookup(key).name+"」，再选择一个上下或左右相邻方块。");return}if(state.selected===i){state.selected=null;renderBoard();setMessage("已取消选择。");return}const a=state.selected,n=state.size;if(Math.abs(Math.floor(a/n)-Math.floor(i/n))+Math.abs(a%n-i%n)!==1){state.selected=i;renderBoard();setMessage("需要选择上下或左右相邻的方块。");return}const next=state.board.slice();[next[a],next[i]]=[next[i],next[a]];const hit=matches(next);if(!hit.length){state.selected=null;renderBoard();setMessage("这次没有匹配成功。试试别的交换，或点击「给我提示」。");return}state.board=next;state.selected=null;state.busy=true;state.chainDepth=0;state.chainBonus=0;state.chainGroups=0;state.chainBaseScore=0;renderBoard();resolveMatches()}
@@ -304,7 +311,7 @@ function resolveMatches(){
       const multiBonus=Math.max(0,groups-1)*50;
       const chainBonus=chain>1?(chain-1)*50:0;
       const waveScore=base+multiBonus+chainBonus;
-      state.score=(Number(state.score)||0)+waveScore;
+      addToScore(waveScore);
       state.lastBaseScore=baseTotal+base;
       state.lastMultiScore=multiBonusTotal+multiBonus;
       state.lastComboScore=chainBonusTotal+chainBonus;
@@ -345,7 +352,7 @@ function resolveMatches(){
     }else if(!capped){
       const chainCount=chain-1;
       const extra=chainCount>1?" 连锁 "+chainCount+" 轮，连锁奖励 +"+bonusTotal+" 分！":"";
-      setMessage("本轮结束："+groupsTotal+" 组匹配，基础分 +"+baseTotal+"，多组奖励 +"+multiBonusTotal+"，连锁奖励 +"+chainBonusTotal+"，本次合计 +"+(baseTotal+multiBonusTotal+chainBonusTotal)+"。"+extra);
+      setMessage("本轮结束：本次 +"+(baseTotal+multiBonusTotal+chainBonusTotal)+"，累计总分 "+state.score+"；"+groupsTotal+" 组匹配，基础分 +"+baseTotal+"，多组奖励 +"+multiBonusTotal+"，连锁奖励 +"+chainBonusTotal+"。"+extra);
     }
     state.lastBaseScore=baseTotal;
     state.lastMultiScore=multiBonusTotal;
