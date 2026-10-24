@@ -240,13 +240,23 @@ function reshuffleDeadBoard(message="检测到死局，已自动重排棋盘！"
 function checkDeadlock(){if(matches(state.board).length===0&&!hasLegalMove(state.board)){reshuffleDeadBoard("自动死局检测：没有任何合法交换");return true}return false}
 function countMatchGroups(board){const n=state.size;let groups=0;for(let r=0;r<n;r++){let run=1;for(let c=1;c<=n;c++){if(c<n&&board[r*n+c]&&board[r*n+c]===board[r*n+c-1])run++;else{if(run>=3)groups++;run=1}}}for(let c=0;c<n;c++){let run=1;for(let r=1;r<=n;r++){if(r<n&&board[r*n+c]&&board[r*n+c]===board[(r-1)*n+c])run++;else{if(run>=3)groups++;run=1}}}return groups}
 function refillBoard(){
-  const n=state.size;
-  if(!Array.isArray(state.board)||state.board.length!==n*n)throw new Error("Invalid board size");
+  const n=state.size,total=n*n;
+  if(!Array.isArray(state.board)||state.board.length!==total)throw new Error("Invalid board size");
+  const compacted=Array(total).fill(null);
+  // First let surviving tiles fall to the bottom of their own columns.
   for(let c=0;c<n;c++){
     const survivors=[];
     for(let r=n-1;r>=0;r--){const key=state.board[r*n+c];if(key)survivors.push(key)}
-    let next=0;
-    for(let r=n-1;r>=0;r--)state.board[r*n+c]=next<survivors.length?survivors[next++]:makeTile();
+    for(let k=0;k<survivors.length;k++)compacted[(n-1-k)*n+c]=survivors[k];
+  }
+  state.board=compacted;
+  // Fill only empty cells. Prefer tiles that do not instantly create a new triple.
+  const keys=currentPool().map(t=>t.key);
+  for(let i=0;i<total;i++){
+    if(state.board[i])continue;
+    let choices=keys.filter(key=>!createsTriple(state.board,i,key));
+    if(!choices.length)choices=keys;
+    state.board[i]=pick(choices);
   }
   if(state.board.some(key=>!key))throw new Error("Refill left an empty tile");
 }
@@ -254,9 +264,11 @@ function resolveMatches(){
   if(state.resolving)return;
   state.resolving=true;
   state.busy=true;
-  let chain=1, groupsTotal=0, baseTotal=0, bonusTotal=0, reachedLimit=false;
+  let chain=1, groupsTotal=0, baseTotal=0, bonusTotal=0, capped=false;
   try{
-    while(chain<=12){
+    // Resolve natural cascades while preserving every surviving tile. The cap is high
+    // enough to avoid a runaway loop; if reached, clear remaining matches by refilling.
+    while(chain<=50){
       const hit=matches(state.board);
       if(!hit.length)break;
       const groups=Math.max(1,countMatchGroups(state.board));
@@ -271,18 +283,30 @@ function resolveMatches(){
       refillBoard();
       chain++;
     }
-    reachedLimit=matches(state.board).length>0;
-    if(reachedLimit){
+    if(matches(state.board).length){
+      capped=true;
+      let settleSteps=0;
+      while(matches(state.board).length&&settleSteps<100){
+        matches(state.board).forEach(i=>state.board[i]=null);
+        refillBoard();
+        settleSteps++;
+      }
+      // Full-board reset is an emergency fallback only if the board somehow cannot settle.
+      if(matches(state.board).length){
+        state.board=makeBoard();
+        state.selected=null;
+        state.hint=null;
+        setMessage("连锁异常过长，已执行兜底恢复；通常只补空位，不会整盘重排。");
+      }else{
+        setMessage("本轮连锁过长，已补齐剩余方块；本轮额外整理不再计分。");
+      }
+    }
+    if(!capped&&!hasLegalMove(state.board)){
       state.board=makeBoard();
       state.selected=null;
       state.hint=null;
-      setMessage("连锁达到 12 轮安全上限，已恢复为可操作棋盘；分数和本局词表保留。");
-    }else if(!hasLegalMove(state.board)){
-      state.board=makeBoard();
-      state.selected=null;
-      state.hint=null;
-      setMessage("自动死局检测：已重排棋盘，分数和本局词表保留。");
-    }else{
+      setMessage("自动死局检测：没有合法步数，已重排棋盘；分数和词表保留。");
+    }else if(!capped){
       const chainCount=chain-1;
       const extra=chainCount>1?" 连锁 "+chainCount+" 轮，额外奖励 +"+bonusTotal+" 分！":"";
       setMessage("本轮结束："+groupsTotal+" 组匹配，基础得分 +"+baseTotal+"，连锁奖励 +"+bonusTotal+"。"+extra);
