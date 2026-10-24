@@ -178,7 +178,7 @@ const TERMS = {
 ]
 };
 const MIXED_NAMES=["推理加速","训练加速","算子开发"];
-const state={category:"综合混合",size:8,board:[],selected:null,score:0,cleared:0,learned:new Set(),current:null,busy:false,hint:null,roundTerms:[],hintsLeft:3,reshufflesLeft:3,chainDepth:0,chainBonus:0,chainGroups:0,autoReshuffles:0,resolving:false,lastMoveScore:0,lastBaseScore:0,lastComboScore:0};
+const state={category:"综合混合",size:8,board:[],selected:null,score:0,cleared:0,learned:new Set(),current:null,busy:false,hint:null,roundTerms:[],hintsLeft:3,reshufflesLeft:3,chainDepth:0,chainBonus:0,chainGroups:0,autoReshuffles:0,resolving:false,lastMoveScore:0,lastBaseScore:0,lastMultiScore:0,lastComboScore:0};
 const $=id=>document.getElementById(id);
 const palette=["#5c55cf","#267f77","#c16d39","#356aa0","#a34c79","#637b37","#8756a8","#a17a2b"];
 function allTerms(){return state.category==="综合混合"?MIXED_NAMES.flatMap(c=>TERMS[c].map(t=>({...termObj(t,c)}))):TERMS[state.category].map(t=>termObj(t,state.category))}
@@ -233,9 +233,9 @@ function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;","
 function renderBoard(){const board=$("board");board.style.gridTemplateColumns=`repeat(${state.size},minmax(0,1fr))`;board.innerHTML="";state.board.forEach((key,i)=>{const t=key?lookup(key):null;const el=document.createElement("button");el.className="tile"+(state.selected===i?" selected":"")+(state.hint?.includes(i)?" selected":"");el.type="button";el.setAttribute("role","gridcell");el.setAttribute("aria-label",t?t.name:"消除中");el.title=t?t.name+"：点击查看释义":"消除中";el.style.background=t?palette[Math.abs(hash(key))%palette.length]:"#30354a";el.textContent=t?t.name:"";el.disabled=!t; if(t)el.addEventListener("click",()=>tileClick(i));board.appendChild(el)})}
 function hash(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h}
 function renderGlossary(){const q=$("search").value.trim().toLowerCase(),terms=currentPool().filter(t=>(t.name+" "+t.kind+" "+t.desc+" "+t.tags.join(" ")).toLowerCase().includes(q));$("glossaryCount").textContent=terms.length+" 个词条";$("glossaryList").innerHTML=terms.map(t=>`<button class="word-row ${t.key===state.current?"current":""}" data-key="${escapeHtml(t.key)}"><b>${escapeHtml(t.name)}</b><span>${escapeHtml(t.kind)}</span></button>`).join("");$("glossaryList").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>showTerm(b.dataset.key)))}
-function renderControls(){$("categoryControls button").forEach(b=>b.classList.toggle("active",b.dataset.category===state.category));$("difficultyControls button").forEach(b=>b.classList.toggle("active",Number(b.dataset.size)===state.size));$("score").textContent=state.score;$("cleared").textContent=state.cleared;$("learnedCount").textContent=state.learned.size;$("hintsLeft").textContent=state.hintsLeft;$("reshufflesLeft").textContent=state.reshufflesLeft;$("scoreBreakdown").textContent="本次得分：+"+state.lastMoveScore+"（基础分 "+state.lastBaseScore+" + 连锁奖励 "+state.lastComboScore+"）";$("hintBtn").disabled=state.busy||state.hintsLeft<=0;$("reshuffleBtn").disabled=state.busy||state.reshufflesLeft<=0}
+function renderControls(){$("categoryControls button").forEach(b=>b.classList.toggle("active",b.dataset.category===state.category));$("difficultyControls button").forEach(b=>b.classList.toggle("active",Number(b.dataset.size)===state.size));$("score").textContent=state.score;$("cleared").textContent=state.cleared;$("learnedCount").textContent=state.learned.size;$("hintsLeft").textContent=state.hintsLeft;$("reshufflesLeft").textContent=state.reshufflesLeft;$("scoreBreakdown").textContent="本次得分：+"+state.lastMoveScore+"（基础分 "+state.lastBaseScore+" + 多组奖励 "+state.lastMultiScore+" + 连锁奖励 "+state.lastComboScore+"）";$("hintBtn").disabled=state.busy||state.hintsLeft<=0;$("reshuffleBtn").disabled=state.busy||state.reshufflesLeft<=0}
 function $$(s){return document.querySelectorAll(s)}
-function startGame(message="新的一局开始了！",changeWords=false){state.busy=false;state.resolving=false;if(changeWords||!state.roundTerms.length)chooseRoundTerms();state.board=makeBoard();state.selected=null;state.score=0;state.cleared=0;state.hint=null;state.busy=false;state.hintsLeft=3;state.reshufflesLeft=3;state.chainDepth=0;state.chainBonus=0;state.chainGroups=0;state.autoReshuffles=0;state.lastMoveScore=0;state.lastBaseScore=0;state.lastComboScore=0;renderBoard();renderControls();setMessage(message+" 本局词种："+currentPool().length+" 个；每局 3 次提示、3 次手动重排。")}
+function startGame(message="新的一局开始了！",changeWords=false){state.busy=false;state.resolving=false;if(changeWords||!state.roundTerms.length)chooseRoundTerms();state.board=makeBoard();state.selected=null;state.score=0;state.cleared=0;state.hint=null;state.busy=false;state.hintsLeft=3;state.reshufflesLeft=3;state.chainDepth=0;state.chainBonus=0;state.chainGroups=0;state.autoReshuffles=0;state.lastMoveScore=0;state.lastBaseScore=0;state.lastMultiScore=0;state.lastComboScore=0;renderBoard();renderControls();setMessage(message+" 本局词种："+currentPool().length+" 个；每局 3 次提示、3 次手动重排。")}
 function tileClick(i){if(state.busy)return;state.hint=null;const key=state.board[i];showTerm(key);if(state.selected===null){state.selected=i;renderBoard();setMessage("已选中「"+lookup(key).name+"」，再选择一个上下或左右相邻方块。");return}if(state.selected===i){state.selected=null;renderBoard();setMessage("已取消选择。");return}const a=state.selected,n=state.size;if(Math.abs(Math.floor(a/n)-Math.floor(i/n))+Math.abs(a%n-i%n)!==1){state.selected=i;renderBoard();setMessage("需要选择上下或左右相邻的方块。");return}const next=state.board.slice();[next[a],next[i]]=[next[i],next[a]];const hit=matches(next);if(!hit.length){state.selected=null;renderBoard();setMessage("这次没有匹配成功。试试别的交换，或点击「给我提示」。");return}state.board=next;state.selected=null;state.busy=true;state.chainDepth=0;state.chainBonus=0;state.chainGroups=0;state.chainBaseScore=0;renderBoard();resolveMatches()}
 function reshuffleDeadBoard(message="检测到死局，已自动重排棋盘！"){state.board=makeBoard();state.selected=null;state.hint=null;state.busy=false;state.autoReshuffles++;renderBoard();renderControls();setMessage(message+" 当前分数和本局词表已保留；自动重排不消耗次数。")}
 function checkDeadlock(){if(matches(state.board).length===0&&!hasLegalMove(state.board)){reshuffleDeadBoard("自动死局检测：没有任何合法交换");return true}return false}
@@ -287,7 +287,7 @@ function resolveMatches(){
   if(state.resolving)return;
   state.resolving=true;
   state.busy=true;
-  let chain=1, groupsTotal=0, baseTotal=0, bonusTotal=0, capped=false;
+  let chain=1, groupsTotal=0, baseTotal=0, multiBonusTotal=0, chainBonusTotal=0, capped=false;
   try{
     // Resolve natural cascades while preserving every surviving tile. The cap is high
     // enough to avoid a runaway loop; if reached, clear remaining matches by refilling.
@@ -301,15 +301,19 @@ function resolveMatches(){
       // match detection and line grouping ever disagree.
       const lineScore=matchGroups.reduce((sum,g)=>sum+30+Math.max(0,g.length-3)*10,0);
       const base=lineScore>0?lineScore:hit.length*10;
-      const combo=chain>1?(chain-1)*50:0;
-      state.score=(Number(state.score)||0)+base+combo;
+      const multiBonus=Math.max(0,groups-1)*50;
+      const chainBonus=chain>1?(chain-1)*50:0;
+      const waveScore=base+multiBonus+chainBonus;
+      state.score=(Number(state.score)||0)+waveScore;
       state.lastBaseScore=baseTotal+base;
-      state.lastComboScore=bonusTotal+combo;
-      state.lastMoveScore=baseTotal+base+bonusTotal+combo;
+      state.lastMultiScore=multiBonusTotal+multiBonus;
+      state.lastComboScore=chainBonusTotal+chainBonus;
+      state.lastMoveScore=baseTotal+base+multiBonusTotal+multiBonus+chainBonusTotal+chainBonus;
       state.cleared=(Number(state.cleared)||0)+hit.length;
       groupsTotal+=Math.max(1,groups);
       baseTotal+=base;
-      bonusTotal+=combo;
+      multiBonusTotal+=multiBonus;
+      chainBonusTotal+=chainBonus;
       renderControls();
       hit.forEach(i=>state.board[i]=null);
       refillBoard();
@@ -341,11 +345,12 @@ function resolveMatches(){
     }else if(!capped){
       const chainCount=chain-1;
       const extra=chainCount>1?" 连锁 "+chainCount+" 轮，连锁奖励 +"+bonusTotal+" 分！":"";
-      setMessage("本轮结束："+groupsTotal+" 组匹配，基础得分 +"+baseTotal+"，连锁奖励 +"+bonusTotal+"，本次合计 +"+(baseTotal+bonusTotal)+"。"+extra);
+      setMessage("本轮结束："+groupsTotal+" 组匹配，基础分 +"+baseTotal+"，多组奖励 +"+multiBonusTotal+"，连锁奖励 +"+chainBonusTotal+"，本次合计 +"+(baseTotal+multiBonusTotal+chainBonusTotal)+"。"+extra);
     }
     state.lastBaseScore=baseTotal;
-    state.lastComboScore=bonusTotal;
-    state.lastMoveScore=baseTotal+bonusTotal;
+    state.lastMultiScore=multiBonusTotal;
+    state.lastComboScore=chainBonusTotal;
+    state.lastMoveScore=baseTotal+multiBonusTotal+chainBonusTotal;
   }catch(err){
     console.error("AI Infra match-3 resolution failed:",err);
     try{state.board=makeBoard()}catch(recoveryError){state.board=Array.from({length:state.size*state.size},(_,i)=>currentPool()[i%currentPool().length].key)}
